@@ -21,7 +21,7 @@ export default async function ALevelPage() {
 
   return (
     <>
-      <ScholarHeader userLabel={user.name ?? user.email} />
+      <ScholarHeader userLabel={user.name ?? user.email ?? ""} />
       <main className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="text-xl font-display text-white mb-1">A Level Subjects</h1>
         <p className="text-white/60 text-sm mb-6">Browse notes, past papers, and study guides.</p>
