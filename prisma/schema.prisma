@@ -1,0 +1,344 @@
+// Xtream Advanced Scholars (XAS) — Prisma schema
+// Target: Render PostgreSQL (also used locally via a real Postgres
+// instance in Termux/dev — never swapped for SQLite or another engine).
+// Migrations are hand-authored in prisma/migrations/ rather than
+// generated via `prisma migrate dev` — see that folder's migration.sql
+// for why, and prisma/rls.sql for the Row Level Security policies applied
+// on top of what this file generates.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- ENUMS ----------
+
+enum Role {
+  SCHOLAR
+  ADMIN
+}
+
+enum Level {
+  O_LEVEL
+  A_LEVEL
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REMOVED
+}
+
+enum ResourceType {
+  NOTES
+  PAST_PAPER
+  REVISION_MATERIAL
+  STUDY_GUIDE
+  OTHER
+}
+
+enum ReportReason {
+  COPYRIGHT
+  INAPPROPRIATE
+  INCORRECT_MISLEADING
+  SPAM
+  MALWARE_SECURITY
+  DUPLICATE
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
+
+enum PremiumCodeStatus {
+  ACTIVE
+  USED
+  REVOKED
+  EXPIRED
+}
+
+enum AuditAction {
+  ADMIN_LOGIN
+  ADMIN_LOGIN_FAILED
+  DOCUMENT_APPROVED
+  DOCUMENT_REJECTED
+  DOCUMENT_DELETED
+  PREMIUM_CODE_CREATED
+  PREMIUM_CODE_REVOKED
+  PREMIUM_ACTIVATED
+  USER_SUSPENDED
+  USER_UNSUSPENDED
+  COMMENT_DELETED
+  SETTINGS_CHANGED
+  SUBJECT_CREATED
+  SUBJECT_UPDATED
+  SUBJECT_DELETED
+}
+
+// ---------- AUTH (NextAuth-compatible + our fields) ----------
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  emailVerified   DateTime?
+  passwordHash    String? // null for OAuth-only accounts
+  firstName       String
+  lastName        String
+  role            Role      @default(SCHOLAR)
+  level           Level?
+  combinationId   String?
+  combination     ALevelCombination? @relation(fields: [combinationId], references: [id])
+  avatarPath      String?
+  isSuspended     Boolean   @default(false)
+  isPhoneVerified Boolean   @default(false) // used for ADMIN accounts only
+  phoneNumber     String? // ADMIN accounts only, for Twilio Verify
+
+  premiumStatus   Boolean   @default(false)
+  premiumExpires  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  documents       Document[]        @relation("UploadedDocuments")
+  comments        Comment[]
+  ratings         Rating[]
+  reports         Report[]
+  bookmarks       Bookmark[]
+  redeemedCode    PremiumCode?      @relation("RedeemedBy")
+  createdCodes    PremiumCode[]     @relation("CreatedBy")
+  auditLogs       AuditLog[]
+
+  @@index([role])
+  @@index([premiumStatus])
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  // used for forgot-password codes and email verification codes
+  identifier String
+  token      String
+  expires    DateTime
+  purpose    String // "PASSWORD_RESET" | "EMAIL_VERIFY" | "ADMIN_PHONE_OTP"
+  attempts   Int      @default(0)
+  consumedAt DateTime?
+
+  @@unique([identifier, token])
+}
+
+// ---------- ACADEMIC STRUCTURE ----------
+
+model ALevelCombination {
+  id        String   @id @default(uuid())
+  code      String   @unique // e.g. PCM
+  name      String
+  createdAt DateTime @default(now())
+
+  users User[]
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  name      String
+  level     Level
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  documents Document[]
+
+  @@index([level])
+}
+
+model ResourceCategory {
+  id        String @id @default(uuid())
+  name      String @unique
+  createdAt DateTime @default(now())
+}
+
+// ---------- DOCUMENTS ----------
+
+model Document {
+  id            String         @id @default(uuid())
+  title         String
+  description   String?
+  level         Level
+  subjectId     String
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+  resourceType  ResourceType
+  year          Int?
+  uploaderId    String
+  uploader      User           @relation("UploadedDocuments", fields: [uploaderId], references: [id])
+
+  filePath      String // path on the persistent disk, never exposed directly
+  originalFilename String
+  mimeType      String
+  fileSizeBytes Int
+  thumbnailPath String?
+
+  status        DocumentStatus @default(PENDING)
+  rejectionNote String?
+  isPremium     Boolean        @default(false)
+
+  downloadCount Int @default(0)
+  viewCount     Int @default(0)
+
+  copyrightConfirmed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  reviewedAt DateTime?
+  reviewedById String?
+
+  comments Comment[]
+  ratings  Rating[]
+  reports  Report[]
+  bookmarks Bookmark[]
+
+  @@index([status])
+  @@index([level, subjectId])
+  @@index([isPremium])
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  body       String
+  isRemoved  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  stars      Int // 1-5, enforced in application layer + a CHECK constraint via raw SQL migration
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, userId]) // one rating per scholar per document
+}
+
+model Report {
+  id         String       @id @default(uuid())
+  documentId String
+  document   Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id])
+  reason     ReportReason
+  details    String?
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now())
+
+  @@index([status])
+}
+
+model Bookmark {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, userId])
+}
+
+// ---------- PREMIUM ----------
+
+model PremiumCode {
+  id           String            @id @default(uuid())
+  codeHash     String            @unique // never store the plaintext code
+  label        String? // e.g. "XAS-CHM-****" masked hint for admin UI only
+  durationDays Int? // null = no expiration
+  status       PremiumCodeStatus @default(ACTIVE)
+
+  createdById  String
+  createdBy    User    @relation("CreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime @default(now())
+
+  redeemedById String? @unique
+  redeemedBy   User?   @relation("RedeemedBy", fields: [redeemedById], references: [id])
+  redeemedAt   DateTime?
+  expiresAt    DateTime?
+
+  revokedAt    DateTime?
+  revokedReason String?
+
+  @@index([status])
+}
+
+// ---------- RATE LIMITING (Phase 2) ----------
+// DB-backed (not in-memory) so limits hold correctly across multiple Render
+// instances/restarts. Used for: forgot-password requests, reset-code
+// verification attempts, login failures, registration attempts.
+model RateLimitEntry {
+  key         String   @id // e.g. "forgot-password:user@example.com" or "register:1.2.3.4"
+  count       Int      @default(1)
+  windowStart DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ---------- SITE SETTINGS & AUDIT ----------
+
+model SiteSetting {
+  key   String @id
+  value String
+}
+
+model AuditLog {
+  id           String      @id @default(uuid())
+  action       AuditAction
+  adminId      String?
+  admin        User?       @relation(fields: [adminId], references: [id])
+  targetType   String?
+  targetId     String?
+  metadata     Json?
+  ipAddress    String?
+  createdAt    DateTime    @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+}
