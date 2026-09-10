@@ -17,13 +17,7 @@ export default async function AdminAuditLogsPage() {
 
   return (
     <>
-      <AdminHeader
-        adminLabel={
-          admin.firstName
-            ? `${admin.firstName} ${admin.lastName ?? ""}`.trim()
-            : admin.email ?? ""
-        }
-      />
+      <AdminHeader adminLabel={admin.name ?? admin.email ?? ""} />
       <main className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-xl font-display text-white mb-6">Audit Logs</h1>
 
