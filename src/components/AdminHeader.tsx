@@ -16,7 +16,7 @@ const NAV_LINKS = [
   { href: "/admin/audit-logs", label: "Audit Logs" },
 ];
 
-export function AdminHeader({ adminLabel }: { adminLabel: string }) {
+export function AdminHeader({ adminLabel }: { adminLabel?: string | null }) {
   return (
     <header className="sticky top-0 z-10 bg-xas-navy-dark/95 backdrop-blur border-b border-xas-gold/20">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-2.5">
@@ -26,7 +26,7 @@ export function AdminHeader({ adminLabel }: { adminLabel: string }) {
             XAS <span className="text-xas-gold">Admin</span>
           </span>
         </Link>
-        <span className="text-white/50 text-xs">{adminLabel}</span>
+        <span className="text-white/50 text-xs">{adminLabel ?? ""}</span>
       </div>
       <nav className="max-w-6xl mx-auto flex gap-4 overflow-x-auto px-4 pb-2 text-xs text-white/70">
         {NAV_LINKS.map((link) => (
