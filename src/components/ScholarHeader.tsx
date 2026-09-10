@@ -12,15 +12,13 @@ const NAV_LINKS = [
   { href: "/notifications", label: "Notifications" },
 ];
 
-export function ScholarHeader({ userLabel }: { userLabel: string }) {
+export function ScholarHeader({ userLabel }: { userLabel?: string | null }) {
   return (
     <header className="sticky top-0 z-10 bg-xas-navy/95 backdrop-blur border-b border-white/10">
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-2.5">
         <Link href="/dashboard" className="flex items-center gap-2">
           <XasBadge size="sm" className="w-9 h-9 object-contain" />
-          <span className="hidden sm:inline text-white font-display text-sm">
-            Xtream Advanced Scholars
-          </span>
+          <span className="hidden sm:inline text-white font-display text-sm">Xtream Advanced Scholars</span>
         </Link>
         <nav className="hidden md:flex items-center gap-4 overflow-x-auto text-sm text-white/70">
           {NAV_LINKS.map((link) => (
@@ -30,7 +28,7 @@ export function ScholarHeader({ userLabel }: { userLabel: string }) {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline text-white/50 text-xs">{userLabel}</span>
+          <span className="hidden sm:inline text-white/50 text-xs">{userLabel ?? ""}</span>
           <Link
             href="/profile"
             className="text-xs rounded-full border border-xas-gold/50 text-xas-gold px-3 py-1 hover:bg-xas-gold/10 transition-colors"
